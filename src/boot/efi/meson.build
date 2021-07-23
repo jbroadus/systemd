@@ -307,6 +307,7 @@ efi_headers = files(
         'pe.h',
         'random-seed.h',
         'shim.h',
+        'slot.h',
         'splash.h',
         'util.h',
         'xbootldr.h',
@@ -329,6 +330,7 @@ systemd_boot_sources = files(
         'drivers.c',
         'random-seed.c',
         'shim.c',
+        'slot.c',
         'xbootldr.c',
 )
 
