@@ -12,6 +12,7 @@ efi_headers = files('''
         random-seed.h
         sha256.h
         shim.h
+        slot.h
         splash.h
         util.h
 '''.split())
@@ -32,6 +33,7 @@ systemd_boot_sources = '''
         random-seed.c
         sha256.c
         shim.c
+        slot.c
 '''.split()
 
 stub_sources = '''

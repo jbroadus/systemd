@@ -15,6 +15,7 @@
 #include "random-seed.h"
 #include "secure-boot.h"
 #include "shim.h"
+#include "slot.h"
 #include "util.h"
 
 #ifndef EFI_OS_INDICATIONS_BOOT_TO_FW_UI
@@ -2189,6 +2190,46 @@ out_unload:
         return err;
 }
 
+static EFI_STATUS boot_ab(EFI_LOADED_IMAGE *parent_image, EFI_HANDLE device, EFI_FILE *root_dir, ABConfig *config) {
+        EFI_HANDLE image;
+        _cleanup_freepool_ EFI_DEVICE_PATH *path = NULL;
+        EFI_STATUS err;
+
+        if (config->boot_count >= config->max_boot_count) {
+                Print(L"Boot failed %d time(s) on slot %d\n", config->boot_count, config->active_slot);
+                uefi_call_wrapper(BS->Stall, 1, 3 * 1000 * 1000);
+                switch_active_slot(root_dir, config);
+        }
+
+        if (config->upgrade_pending) {
+                Print(L"Upgrade pending, trying new boot on slot %d\n", config->active_slot);
+                uefi_call_wrapper(BS->Stall, 1, 3 * 1000 * 1000);
+                increment_boot_count(root_dir, config);
+        }
+
+        path = FileDevicePath(device, config->active_slot == SLOT_A ? config->a_efi : config->b_efi);
+        if (!path) {
+                Print(L"Error getting device path\n");
+                uefi_call_wrapper(BS->Stall, 1, 3 * 1000 * 1000);
+                return EFI_INVALID_PARAMETER;
+        }
+
+        err = uefi_call_wrapper(BS->LoadImage, 6, TRUE, parent_image, path, NULL, 0, &image);
+        if (EFI_ERROR(err)) {
+                _cleanup_freepool_ CHAR16 *str = NULL;
+                str = DevicePathToStr(path);
+                Print(L"Error loading image %s: %r\n", str, err);
+                uefi_call_wrapper(BS->Stall, 1, 3 * 1000 * 1000);
+                return err;
+        }
+
+        efivar_set_time_usec(LOADER_GUID, L"LoaderTimeExecUSec", 0);
+        err = uefi_call_wrapper(BS->StartImage, 3, image, NULL, NULL);
+
+        uefi_call_wrapper(BS->UnloadImage, 1, image);
+        return err;
+}
+
 static EFI_STATUS reboot_into_firmware(VOID) {
         UINT64 old, new;
         EFI_STATUS err;
@@ -2257,6 +2298,7 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *sys_table) {
         CHAR16 *loaded_image_path;
         EFI_STATUS err;
         Config config;
+        ABConfig ab_config;
         UINT64 init_usec;
         BOOLEAN menu = FALSE;
         CHAR16 uuid[37];
@@ -2291,6 +2333,10 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *sys_table) {
                 err = security_policy_install();
                 if (EFI_ERROR(err))
                         return log_error_status_stall(err, L"Error installing security policy: %r", err);
+        }
+
+        if (get_ab_config(root_dir, &ab_config) && !EFI_ERROR(boot_ab(image, loaded_image->DeviceHandle, root_dir, &ab_config))) {
+              return EFI_SUCCESS;
         }
 
         /* the filesystem path to this image, to prevent adding ourselves to the menu */
