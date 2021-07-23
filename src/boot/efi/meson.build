@@ -348,6 +348,7 @@ efi_headers = files(
         'random-seed.h',
         'secure-boot.h',
         'shim.h',
+        'slot.h',
         'splash.h',
         'ticks.h',
         'util.h',
@@ -375,6 +376,7 @@ common_sources = files(
 systemd_boot_sources = files(
         'boot.c',
         'shim.c',
+        'slot.c',
 )
 
 stub_sources = files(
